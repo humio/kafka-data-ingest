@@ -14,10 +14,6 @@ import spray.json.{JsObject, JsString, JsValue}
   */
 object Runner extends App {
   
-  //testHumioClient()
-  //produce()
-  //Thread.sleep(5000)
-  
   read(readConsumerProperties(), readTopics())
   
   def readTopics(): Seq[String] = {
@@ -33,36 +29,4 @@ object Runner extends App {
   def read(properties: Properties, topics: Seq[String]): Unit = {
     new KafkaClient(properties, topics, 2).setupReadLoop()
   }
-
-  def produce(): Unit = {
-    val p1 = new KafkaDataProducer("localhost:9092", "test1")
-    val p2 = new KafkaDataProducer("localhost:9092", "test2")
-    new Thread() {
-      override def run(): Unit = {
-        var i = 0
-        var j = 0
-        while(true) {
-          p1.send(s"hello1 $i")
-          Thread.sleep(1000)
-          p2.send(s"hello2 $j")
-          Thread.sleep(1000)
-          i += 1
-          j += 1
-        }
-      }
-    }.start()
-  }
-  
-  def testHumioClient(): Unit = {
-    val client = new HumioClient("http://localhost:8080", "developer", "developer")
-
-    val isoDateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
-    
-    val events = for(i <- 0 until 10) yield{
-      Event(isoDateTimeFormatter.format(ZonedDateTime.now()), new JsObject(Map("hello" -> JsString(i.toString))))
-    }
-    
-    client.put(events, Map("service" -> "chr"))
-  }
-
 }
