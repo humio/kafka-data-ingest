@@ -35,7 +35,7 @@ class HumioClient(hostUrl: String, dataspace: String, token: String) {
     val entity = HttpEntity(contentType= ContentTypes.`application/json`, events.toJson.toString())
     val req = HttpRequest(method=HttpMethods.POST, uri = url, entity = entity).addCredentials(OAuth2BearerToken(token))
     val responseFuture: Future[HttpResponse] =  Http().singleRequest(req)
-    logger.info(s"send request with size=${events.foldLeft(0){case (acc, tagsAndEvents) => acc + tagsAndEvents.events.size}} events")
+    logger.info(s"sending request with size=${events.foldLeft(0){case (acc, tagsAndEvents) => acc + tagsAndEvents.events.size}} events")
 
     Await.ready(responseFuture, Duration(5, TimeUnit.SECONDS)).value.get match {
       case Success(response) => {

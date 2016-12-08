@@ -27,7 +27,10 @@ object Runner extends App {
   def createKafkaClient(): KafkaClient = {
     val properties = readPropertiesFromFile("./kafka-consumer.properties")
     val topics = scala.io.Source.fromFile("topics.txt").getLines().map(_.trim).toSeq
-    new KafkaClient(properties, topics, 2)
+
+    val humioProps = readPropertiesFromFile("./humio.properties")
+    val threadsPerTopic = humioProps.getProperty("kafkaThreadsPerTopic").toInt
+    new KafkaClient(properties, topics, threadsPerTopic)
   }
   
   def createHumioClient(): HumioClient = {
