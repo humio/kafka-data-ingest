@@ -11,6 +11,5 @@ object HumioJsonProtocol extends DefaultJsonProtocol {
   implicit val tagsAndEvents = jsonFormat2(TagsAndEvents)
 }
 
-
 case class TagsAndEvents(tags: Map[String, String], events: Seq[Event])
-case class Event(timestamp: String, attributes: JsObject)
+case class Event(timestamp: Long, attributes: JsObject)

@@ -3,6 +3,7 @@ package com.humio.ingest.kafka
 import java.util
 import java.util.Properties
 
+import com.humio.ingest.main.MessageHandler.Message
 import kafka.consumer.{Consumer, ConsumerConfig}
 import kafka.javaapi.consumer.ConsumerConnector
 import kafka.serializer.StringDecoder
@@ -26,19 +27,17 @@ class KafkaClient(externalProperties: Properties, topics: Seq[String], threadsPe
     props.putAll(externalProperties)
     
     val config: ConsumerConfig = new ConsumerConfig(props)
-    logger.info(s"creating consumer with properties=${props}")
+    logger.info(s"creating consumer with properties=$props")
     Consumer.createJavaConsumerConnector(config)
-    
   }
 
-  def setupReadLoop(): Unit = {
+  def setupReadLoop(handleMessage: Message => Unit): Unit = {
     val consumer = setupConsumer()
     val topicStreamMap = new util.HashMap[String, Integer]()
     for(topic <- topics) {
       topicStreamMap.put(topic, new java.lang.Integer(threadsPerTopic))  
     }
     val res = consumer.createMessageStreams(topicStreamMap, new StringDecoder(), new StringDecoder())
-    
     logger.info(s"creating message streams: ${res.asScala.map(t => (t._1, t._2.toList))}")
     
     for( (topic, streams) <- res;
@@ -47,13 +46,11 @@ class KafkaClient(externalProperties: Properties, topics: Seq[String], threadsPe
         override def run(): Unit = {
           try {
             val it = stream.iterator()
-            logger.info(s"creating stream for topic=$topic stream=${stream.clientId}")
             while(it.hasNext()) {
-              logger.info(s"iterator hasNext was true for topic=$topic, stream=$stream")
               val msg = it.next().message()
-              logger.info(s"read message from topic=$topic msg=$msg")
+              handleMessage(Message(msg, topic))
             }
-            logger.info(s"leaving read loop for topic=$topic stream=$stream")
+            run()
           } catch {
             case ex: Throwable => {
               logger.error(s"Error consuming topic=$topic", ex)

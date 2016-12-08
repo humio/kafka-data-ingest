@@ -20,6 +20,7 @@ import scala.util.{Failure, Success}
 /**
   * Created by chr on 17/11/2016.
   */
+
 class HumioClient(hostUrl: String, dataspace: String, token: String) {
   
   val logger = LoggerFactory.getLogger(getClass)
@@ -28,18 +29,17 @@ class HumioClient(hostUrl: String, dataspace: String, token: String) {
   implicit val materializer = ActorMaterializer()
   
   val url = s"$hostUrl/api/v1/dataspaces/$dataspace/ingest"
+  logger.info(s"creating humio client with url: $url")
   
-  def put(events: Seq[Event], tags: Map[String, String]): Unit = {
-    val jsonRequest = Seq(TagsAndEvents(tags=tags, events=events))
-    val entity = HttpEntity(contentType= ContentTypes.`application/json`, jsonRequest.toJson.toString())
+  def put(events: Seq[TagsAndEvents]): Unit = {
+    val entity = HttpEntity(contentType= ContentTypes.`application/json`, events.toJson.toString())
     val req = HttpRequest(method=HttpMethods.POST, uri = url, entity = entity).addCredentials(OAuth2BearerToken(token))
     val responseFuture: Future[HttpResponse] =  Http().singleRequest(req)
+    logger.info(s"send request with size=${events.foldLeft(0){case (acc, tagsAndEvents) => acc + tagsAndEvents.events.size}} events")
 
     Await.ready(responseFuture, Duration(5, TimeUnit.SECONDS)).value.get match {
       case Success(response) => {
-        if (response.status.isSuccess()) {
-          logger.info(s"send request with size=${events.size} events")  
-        } else {
+        if (!response.status.isSuccess()) {
           logger.error(s"error sending request to humio. status=${response.status.intValue()} res=${response.entity.toString}")
         }
         

@@ -1,0 +1,21 @@
+<configuration>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- encoders are assigned the type
+             ch.qos.logback.classic.encoder.PatternLayoutEncoder by default -->
+        <encoder>
+            <pattern>%date{yyyy-MM-dd'T'HH:mm:ss.SSSZ} [%thread] %-5level %logger{5} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+
+    <logger name="org.apache.zookeeper" level="ERROR" />
+    <logger name="org.I0Itec.zkclient" level="ERROR" />
+    <logger name="org.apache.kafka" level="ERROR" />
+    <logger name="org.apache.kafka" level="ERROR" />
+    <logger name="kafka" level="ERROR" />
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
+    </root>
+</configuration>
