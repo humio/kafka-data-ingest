@@ -1,10 +1,9 @@
 package com.humio.ingest.main
 
-import scala.collection.JavaConversions._
+import java.nio.charset.StandardCharsets
+
 import spray.json._
-import com.humio.ingest.client.HumioJsonProtocol._
-import java.util
-import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.{ArrayBlockingQueue, TimeUnit}
 
 import com.humio.ingest.client.{Event, HumioClient, TagsAndEvents}
 import org.slf4j.LoggerFactory
@@ -17,7 +16,7 @@ object MessageHandler{
   val logger = LoggerFactory.getLogger(getClass)
   
   case class Message(jsonString: String, topic: String)
-  case class MessageHandlerConfig(bulkSize: Int, queueSize: Int, workerThreads: Int)
+  case class MessageHandlerConfig(maxByteSize: Int, maxWaitTimeSeconds: Int, queueSize: Int, workerThreads: Int)
 }
 
 import MessageHandler._
@@ -32,33 +31,56 @@ class MessageHandler(humioClient: HumioClient, config: MessageHandlerConfig) {
   }
 
   private def startWorkers(): Unit = {
-    for(_ <- 0 until config.workerThreads) {
+    for (_ <- 0 until config.workerThreads) {
       val t = new Thread() {
         override def run(): Unit = {
-          val list = new util.ArrayList[Message](config.bulkSize)
+          var list = List[Message]()
+          var byteSize = 0
+          var time = System.currentTimeMillis()
           while (true) {
             try {
-              queue.drainTo(list, config.bulkSize)
-              if (!list.isEmpty) {
-                val tagsAndEvents = transformJson(list)
-                humioClient.put(tagsAndEvents)
-                list.clear()  
-              } else {
-                Thread.sleep(100)
+              val msg = queue.poll(100, TimeUnit.MILLISECONDS)
+              val msgTime = System.currentTimeMillis()
+              val msgSize = 
+                if (msg != null) {
+                  msg.jsonString.getBytes(StandardCharsets.UTF_8).size
+                } else {
+                  0
               }
-              Thread.sleep(3000)
-              
+              val waitTime = msgTime - time 
+              if ((byteSize + msgSize) > config.maxByteSize ||
+                waitTime > config.maxWaitTimeSeconds * 1000) {
+                val sendTime = System.currentTimeMillis()
+                if (!list.isEmpty) {
+                  send(list)
+                  logger.info(s"send request with events=${list.size} bytes=$byteSize, waitTime=$waitTime, requesttime=${System.currentTimeMillis() - sendTime}")
+                }
+                list = List()
+                byteSize = 0
+              }
+              if (msg != null) {
+                if (byteSize == 0) {
+                  //we are adding the first new message
+                  time = msgTime
+                }
+                list = msg :: list
+                byteSize += msgSize
+              }
             } catch {
               case e: Throwable => {
                 logger.error("error in worker", e)
-                Thread.sleep(5000)
               }
             }
           }
         }
       }
       t.start()
-    }  
+    }
+  }
+  
+  private def send(messages: Seq[Message]): Unit = {
+    val tagsAndEvents = transformJson(messages)
+    humioClient.put(tagsAndEvents)
   }
   
   private def transformJson(msgs: Seq[Message]): Seq[TagsAndEvents] = {

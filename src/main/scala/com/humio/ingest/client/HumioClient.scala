@@ -1,5 +1,6 @@
 package com.humio.ingest.client
 
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import java.util.logging.Logger
 
@@ -32,16 +33,20 @@ class HumioClient(hostUrl: String, dataspace: String, token: String) {
   logger.info(s"creating humio client with url: $url")
   
   def put(events: Seq[TagsAndEvents]): Unit = {
-    val entity = HttpEntity(contentType= ContentTypes.`application/json`, events.toJson.toString())
+    val json = events.toJson.toString()
+    val entity = HttpEntity(contentType= ContentTypes.`application/json`, json)
     val req = HttpRequest(method=HttpMethods.POST, uri = url, entity = entity).addCredentials(OAuth2BearerToken(token))
     val responseFuture: Future[HttpResponse] =  Http().singleRequest(req)
-    logger.info(s"sending request with size=${events.foldLeft(0){case (acc, tagsAndEvents) => acc + tagsAndEvents.events.size}} events")
+    //val eventSize = events.foldLeft(0){case (acc, tagsAndEvents) => acc + tagsAndEvents.events.size}
+    //val byteSize = json.getBytes(StandardCharsets.UTF_8).size
+    //val time = System.currentTimeMillis()
 
-    Await.ready(responseFuture, Duration(5, TimeUnit.SECONDS)).value.get match {
+    Await.ready(responseFuture, Duration(10, TimeUnit.SECONDS)).value.get match {
       case Success(response) => {
         if (!response.status.isSuccess()) {
           logger.error(s"error sending request to humio. status=${response.status.intValue()} res=${response.entity.toString}")
         }
+        //logger.info(s"request finished. time=${System.currentTimeMillis() - time}, events=$eventSize size=$byteSize")
         
       }
       case Failure(e) => {

@@ -15,6 +15,8 @@ object ProducerRunner extends App{
   def produce(): Unit = {
     new Thread() {
       override def run(): Unit = {
+        var lastMeasuredTime = System.currentTimeMillis()
+        var requests = 0
         var i = 0L
         var j = Long.MaxValue / 2
         val (p1, p2) = createKafkaProducers()
@@ -22,11 +24,20 @@ object ProducerRunner extends App{
           try{
             val data1 = createData(i)
             p1.send(data1)
+            requests += 1
 
             val data2 = createData(j)
             p2.send(data2)
+            requests += 1
             
-            Thread.sleep(1)
+            val time = System.currentTimeMillis()
+            if ((time - lastMeasuredTime) > 1000) {
+              logger.info(s"produced $requests")
+              requests = 0
+              lastMeasuredTime = time
+            }
+            
+            //Thread.sleep(2)
           } catch {
             case e: Throwable => {
               logger.error("error producing", e)
@@ -55,8 +66,8 @@ object ProducerRunner extends App{
   }
   
   def createKafkaProducers(): (KafkaDataProducer, KafkaDataProducer) = {
-    val kp1 = new KafkaDataProducer("localhost:9092", "test1")
-    val kp2 = new KafkaDataProducer("localhost:9092", "test2")
+    val kp1 = new KafkaDataProducer("localhost:9093", "test1")
+    val kp2 = new KafkaDataProducer("localhost:9093", "test2")
     kp1 -> kp2
   }
 

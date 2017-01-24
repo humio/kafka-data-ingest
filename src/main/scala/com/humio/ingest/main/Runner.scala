@@ -21,7 +21,6 @@ object Runner extends App {
 
     val messageHandlerFun = (m: Message) => messageHandler.newMessage(m)
     kafkaClient.setupReadLoop(messageHandlerFun)
-
   }
   
   def createKafkaClient(): KafkaClient = {
@@ -40,8 +39,18 @@ object Runner extends App {
   
   def createMessageHandler(humioClient: HumioClient): MessageHandler = {
     val props = readPropertiesFromFile("./humio.properties")
-    val config = MessageHandlerConfig(bulkSize = props.getProperty("bulkSize").toInt, queueSize = props.getProperty("queueSize").toInt, workerThreads = props.getProperty("workerThreads").toInt)
+    val config = MessageHandlerConfig(
+                                      maxByteSize = getProperty(props, "maxByteSize", "4194304").toInt,
+                                      maxWaitTimeSeconds = getProperty(props, "maxWaitTimeSeconds", "1").toInt,
+                                      queueSize = getProperty(props, "queueSize", "100000").toInt, 
+                                      workerThreads = getProperty(props, "workerThreads", "10").toInt
+    )
     new MessageHandler(humioClient, config)
+  }
+  
+  def getProperty(properties: Properties, key: String, defaultValue: String) : String = {
+    val value = properties.getProperty(key)
+    if (value != null) value else defaultValue 
   }
   
   def readPropertiesFromFile(filename: String): Properties = {
