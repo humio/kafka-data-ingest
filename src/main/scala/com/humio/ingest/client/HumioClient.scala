@@ -32,15 +32,18 @@ class HumioClient(hostUrl: String, dataspace: String, token: String) {
   val url = s"$hostUrl/api/v1/dataspaces/$dataspace/ingest"
   logger.info(s"creating humio client with url: $url")
   
+  val http = Http()
+  
   def put(events: Seq[TagsAndEvents]): Unit = {
     val json = events.toJson.toString()
     val entity = HttpEntity(contentType= ContentTypes.`application/json`, json)
     val req = HttpRequest(method=HttpMethods.POST, uri = url, entity = entity).addCredentials(OAuth2BearerToken(token))
-    val responseFuture: Future[HttpResponse] =  Http().singleRequest(req)
+    val responseFuture: Future[HttpResponse] =  http.singleRequest(req)
     //val eventSize = events.foldLeft(0){case (acc, tagsAndEvents) => acc + tagsAndEvents.events.size}
     //val byteSize = json.getBytes(StandardCharsets.UTF_8).size
     //val time = System.currentTimeMillis()
-
+    
+    
     Await.ready(responseFuture, Duration(10, TimeUnit.SECONDS)).value.get match {
       case Success(response) => {
         if (!response.status.isSuccess()) {
