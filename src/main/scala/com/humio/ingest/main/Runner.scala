@@ -40,7 +40,7 @@ object Runner extends App {
   def createMessageHandler(humioClient: HumioClient): MessageHandler = {
     val props = readPropertiesFromFile("./humio.properties")
     val config = MessageHandlerConfig(
-                                      maxByteSize = getProperty(props, "maxByteSize", "4194304").toInt,
+                                      maxByteSize = getProperty(props, "maxByteSize", "1048576").toInt,
                                       maxWaitTimeSeconds = getProperty(props, "maxWaitTimeSeconds", "1").toInt,
                                       queueSize = getProperty(props, "queueSize", "100000").toInt, 
                                       workerThreads = getProperty(props, "workerThreads", "10").toInt
