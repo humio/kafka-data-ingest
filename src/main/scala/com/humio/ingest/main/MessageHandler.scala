@@ -80,7 +80,7 @@ class MessageHandler(humioClient: HumioClient, config: MessageHandlerConfig) {
   
   private def send(messages: Seq[Message]): Unit = {
     val tagsAndEvents = transformJson(messages)
-    humioClient.put(tagsAndEvents)
+    humioClient.send(tagsAndEvents)
   }
   
   private def transformJson(msgs: Seq[Message]): Seq[TagsAndEvents] = {

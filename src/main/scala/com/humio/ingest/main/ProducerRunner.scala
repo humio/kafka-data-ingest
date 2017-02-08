@@ -62,7 +62,7 @@ object ProducerRunner extends App{
        |  "host": "compute${randomNumber % 10000}-sjc1",
        |  "msg": "this is my log message"
        |}
-              """.stripMargin
+       |""".stripMargin
   }
   
   def createKafkaProducers(): (KafkaDataProducer, KafkaDataProducer) = {

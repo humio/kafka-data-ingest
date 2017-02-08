@@ -25,11 +25,26 @@ object Runner extends App {
   
   def createKafkaClient(): KafkaClient = {
     val properties = readPropertiesFromFile("./kafka-consumer.properties")
-    val topics = scala.io.Source.fromFile("topics.txt").getLines().map(_.trim).toSeq
+    val topics = readTopics("topics.txt")
 
     val humioProps = readPropertiesFromFile("./humio.properties")
     val threadsPerTopic = humioProps.getProperty("kafkaThreadsPerTopic").toInt
     new KafkaClient(properties, topics, threadsPerTopic)
+  }
+  
+  private def readTopics(file: String): Map[String, List[String]] = {
+    val lines = scala.io.Source.fromFile("topics.txt").getLines().map(_.trim).filterNot(s => s.isEmpty || s.startsWith("#"))
+    lines.foldLeft(("", Map[String, List[String]]())) {
+      case ((currentZookeeperStr, map), line) => {
+        if (line.startsWith("@@")) {
+          val currentZookeeperStr =  line.replaceAll("@", "")
+          currentZookeeperStr -> map
+        } else {
+          val seq = map.getOrElse(currentZookeeperStr, List())
+          currentZookeeperStr -> (map + (currentZookeeperStr -> (line :: seq)))
+        }
+      }
+    }._2
   }
   
   def createHumioClient(): HumioClient = {

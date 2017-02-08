@@ -34,29 +34,43 @@ class HumioClient(hostUrl: String, dataspace: String, token: String) {
   
   val http = Http()
   
-  def put(events: Seq[TagsAndEvents]): Unit = {
-    val json = events.toJson.toString()
-    val entity = HttpEntity(contentType= ContentTypes.`application/json`, json)
-    val req = HttpRequest(method=HttpMethods.POST, uri = url, entity = entity).addCredentials(OAuth2BearerToken(token))
-    val responseFuture: Future[HttpResponse] =  http.singleRequest(req)
-    //val eventSize = events.foldLeft(0){case (acc, tagsAndEvents) => acc + tagsAndEvents.events.size}
-    //val byteSize = json.getBytes(StandardCharsets.UTF_8).size
-    //val time = System.currentTimeMillis()
-    
-    
-    Await.ready(responseFuture, Duration(10, TimeUnit.SECONDS)).value.get match {
-      case Success(response) => {
-        if (!response.status.isSuccess()) {
-          logger.error(s"error sending request to humio. status=${response.status.intValue()} res=${response.entity.toString}")
+  def send(events: Seq[TagsAndEvents], retry: Int = 0): Unit = {
+    try {
+      val json = events.toJson.toString()
+      val entity = HttpEntity(contentType = ContentTypes.`application/json`, json)
+      val req = HttpRequest(method = HttpMethods.POST, uri = url, entity = entity).addCredentials(OAuth2BearerToken(token))
+      val responseFuture: Future[HttpResponse] = http.singleRequest(req)
+      //val eventSize = events.foldLeft(0){case (acc, tagsAndEvents) => acc + tagsAndEvents.events.size}
+      //val byteSize = json.getBytes(StandardCharsets.UTF_8).size
+      //val time = System.currentTimeMillis()
+
+
+      Await.ready(responseFuture, Duration(30, TimeUnit.SECONDS)).value.get match {
+        case Success(response) => {
+          if (!response.status.isSuccess()) {
+            logger.error(s"error sending request to humio. status=${response.status.intValue()} res=${response.entity.toString}")
+          }
+          //logger.info(s"request finished. time=${System.currentTimeMillis() - time}, events=$eventSize size=$byteSize")
+
         }
-        //logger.info(s"request finished. time=${System.currentTimeMillis() - time}, events=$eventSize size=$byteSize")
-        
+        case Failure(e) => {
+          fail(e, events, retry)
+        }
       }
-      case Failure(e) => {
-        logger.error("error sending request to humio", e)
+    } catch {
+      case ex: Exception => {
+        fail(ex, events, retry)
       }
     }
-    
+  }
+  
+  private def fail(exception: Throwable, events: Seq[TagsAndEvents], retry: Int): Unit = {
+    if (retry <= 2) {
+      logger.error("Got exception sending request to humio. will retry...", exception)
+      send(events, retry + 1)
+    } else {
+      logger.error("Got exception sending request to humio. not retrying", exception)
+    }
   }
   
 }
