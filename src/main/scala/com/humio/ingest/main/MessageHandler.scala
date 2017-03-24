@@ -1,6 +1,8 @@
 package com.humio.ingest.main
 
 import java.nio.charset.StandardCharsets
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 import spray.json._
 import java.util.concurrent.{ArrayBlockingQueue, TimeUnit}
@@ -82,17 +84,25 @@ class MessageHandler(humioClient: HumioClient, config: MessageHandlerConfig) {
     val tagsAndEvents = transformJson(messages)
     humioClient.send(tagsAndEvents)
   }
+
+  private val isoDateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
   
   private def transformJson(msgs: Seq[Message]): Seq[TagsAndEvents] = {
     var res = Map[String, Seq[Event]]()
     for(msg <- msgs) {
-      val json = msg.jsonString.parseJson
-      val fields = json.asJsObject.fields
+      val json = msg.jsonString.parseJson.asJsObject
       
-      val ts = fields.get("ts").get.asInstanceOf[JsNumber].value.doubleValue()
-      val timestamp = (ts * 1000).toLong
-      val attributes = fields - "ts"
-      val event = Event(timestamp, JsObject(attributes))
+      val ts: Long =
+        json.getFields("ts", "time") match {
+          case Seq(JsNumber(time)) => (time.doubleValue() * 1000).toLong
+          case Seq(JsString(dateTimeStr)) => ZonedDateTime.parse(dateTimeStr, isoDateTimeFormatter).toInstant.toEpochMilli
+          case _ => {
+            logger.warn(s"Got event without recognized timestamp. event=${json}")
+            System.currentTimeMillis()
+          }
+        }
+      
+      val event = Event(ts, JsObject(json.fields))
       
       val seq = res.getOrElse(msg.topic, Seq())
       res += msg.topic -> ( seq :+ event)

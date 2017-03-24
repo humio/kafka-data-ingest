@@ -1,5 +1,7 @@
 package com.humio.ingest.main
 
+import java.time.format.DateTimeFormatter
+
 import com.humio.ingest.kafka.{KafkaClient, KafkaDataProducer}
 import org.slf4j.LoggerFactory
 
@@ -22,11 +24,11 @@ object ProducerRunner extends App{
         val (p1, p2) = createKafkaProducers()
         while(true) {
           try{
-            val data1 = createData(i)
+            val data1 = createData1(i)
             p1.send(data1)
             requests += 1
 
-            val data2 = createData(j)
+            val data2 = createData2(j)
             p2.send(data2)
             requests += 1
             
@@ -50,8 +52,11 @@ object ProducerRunner extends App{
       }
     }.start()
   }
+
+
+  private val isoDateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
   
-  def createData(randomNumber: Long): String = {
+  def createData1(randomNumber: Long): String = {
     val time = System.currentTimeMillis() / 1000D
     s"""
        |{
@@ -64,6 +69,22 @@ object ProducerRunner extends App{
        |}
        |""".stripMargin
   }
+
+  def createData2(randomNumber: Long): String = {
+    val time = System.currentTimeMillis() / 1000D
+    s"""
+       |{
+       |  "pipeline": "us1",
+       |  "celery_identifier": "minimez",
+       |  "level": "INFO",
+       |  "time": "2017-03-24T09:41:09Z",
+       |  "host": "compute${randomNumber % 10000}-sjc1",
+       |  "msg": "this is my log message"
+       |}
+       |""".stripMargin
+  }
+
+  
   
   def createKafkaProducers(): (KafkaDataProducer, KafkaDataProducer) = {
     val kp1 = new KafkaDataProducer("localhost:9093", "test1")

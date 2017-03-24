@@ -38,9 +38,9 @@ class KafkaClient(externalProperties: Properties, topics: Map[String, Seq[String
       val topicStreamMap = new util.HashMap[String, Integer]()
       for (topic <- topics) {
         topicStreamMap.put(topic, new java.lang.Integer(threadsPerTopic))
+        logger.info(s"listening to topic: $zookeeperConnectStr -> $topic")
       }
       val res = consumer.createMessageStreams(topicStreamMap, new StringDecoder(), new StringDecoder())
-      logger.info(s"creating message streams: ${res.asScala.map(t => (t._1, t._2.toList))}")
 
       for ((topic, streams) <- res;
            stream <- streams) {
