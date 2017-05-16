@@ -56,7 +56,7 @@ class KafkaClient(externalProperties: Properties, topics: Map[String, Seq[String
             } catch {
               case ex: Throwable => {
                 logger.error(s"Error consuming topic=$topic", ex)
-                Thread.sleep(5000)
+                Thread.sleep(1000)
               }
             }
           }

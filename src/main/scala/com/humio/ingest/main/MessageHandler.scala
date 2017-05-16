@@ -90,22 +90,28 @@ class MessageHandler(humioClient: HumioClient, config: MessageHandlerConfig) {
   private def transformJson(msgs: Seq[Message]): Seq[TagsAndEvents] = {
     var res = Map[String, Seq[Event]]()
     for(msg <- msgs) {
-      val json = msg.jsonString.parseJson.asJsObject
-      
-      val ts: Long =
-        json.getFields("ts", "time") match {
-          case Seq(JsNumber(time)) => (time.doubleValue() * 1000).toLong
-          case Seq(JsString(dateTimeStr)) => ZonedDateTime.parse(dateTimeStr, isoDateTimeFormatter).toInstant.toEpochMilli
-          case _ => {
-            logger.warn(s"Got event without recognized timestamp. event=${json}")
-            System.currentTimeMillis()
+      try {
+        val json = msg.jsonString.parseJson.asJsObject
+
+        val ts: Long =
+          json.getFields("ts", "time") match {
+            case Seq(JsNumber(time)) => (time.doubleValue() * 1000).toLong
+            case Seq(JsString(dateTimeStr)) => ZonedDateTime.parse(dateTimeStr, isoDateTimeFormatter).toInstant.toEpochMilli
+            case _ => {
+              logger.warn(s"Got event without recognized timestamp. event=${json}")
+              System.currentTimeMillis()
+            }
           }
+
+        val event = Event(ts, JsObject(json.fields))
+
+        val seq = res.getOrElse(msg.topic, Seq())
+        res += msg.topic -> ( seq :+ event)
+      } catch {
+        case e: Throwable => {
+          logger.error(s"Could not handle event for topic=${msg.topic} msg=${msg}", e)
         }
-      
-      val event = Event(ts, JsObject(json.fields))
-      
-      val seq = res.getOrElse(msg.topic, Seq())
-      res += msg.topic -> ( seq :+ event)
+      }
     }
     
     res.foldLeft(Vector[TagsAndEvents]()) { case (acc, (k,v)) => 
