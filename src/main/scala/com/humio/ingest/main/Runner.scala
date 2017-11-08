@@ -2,10 +2,12 @@ package com.humio.ingest.main
 
 import java.io.FileInputStream
 import java.util.Properties
+import java.util.concurrent.ArrayBlockingQueue
 
 import com.humio.ingest.client.HumioClient
 import com.humio.ingest.kafka.KafkaClient
-import com.humio.ingest.main.MessageHandler.{Message, MessageHandlerConfig}
+import com.humio.ingest.kafka.KafkaClient.OffsetHandling
+import com.humio.ingest.main.MessageHandler.MessageHandlerConfig
 
 /**
   * Created by chr on 17/11/2016.
@@ -17,10 +19,10 @@ object Runner extends App {
   def run(): Unit = {
     val kafkaClient = createKafkaClient()
     val humioClient = createHumioClient()
-    val messageHandler = createMessageHandler(humioClient)
-
-    val messageHandlerFun = (m: Message) => messageHandler.newMessage(m)
-    kafkaClient.setupReadLoop(messageHandlerFun)
+    val queues = kafkaClient.setupReadLoop()
+    val messageHandler = createMessageHandler(queues, humioClient)
+    
+    
   }
   
   def createKafkaClient(): KafkaClient = {
@@ -28,8 +30,11 @@ object Runner extends App {
     val topics = readTopics("topics.txt")
 
     val humioProps = readPropertiesFromFile("./humio.properties")
-    val threadsPerTopic = humioProps.getProperty("kafkaThreadsPerTopic").toInt
-    new KafkaClient(properties, topics, threadsPerTopic)
+    val offsetHandling = humioProps.getProperty("kafkaOffsetHandling") match {
+      case str if (str != null && str.trim.length > 0) => OffsetHandling.withName(str)
+      case _ => OffsetHandling.continue
+    }
+    new KafkaClient(properties, topics, offsetHandling)
   }
   
   private def readTopics(file: String): Map[String, List[String]] = {
@@ -49,18 +54,17 @@ object Runner extends App {
   
   def createHumioClient(): HumioClient = {
     val props = readPropertiesFromFile("./humio.properties")
-    new HumioClient(props.getProperty("hostUrl"), props.getProperty("dataspace"), props.getProperty("token"))
+    val httpThreads = getProperty(props, "humioHttpThreads", "10").toInt
+    new HumioClient(props.getProperty("hostUrl"), props.getProperty("dataspace"), Option(props.getProperty("token")), httpThreads)
   }
   
-  def createMessageHandler(humioClient: HumioClient): MessageHandler = {
+  def createMessageHandler(queues: Map[String, ArrayBlockingQueue[String]], humioClient: HumioClient): MessageHandler = {
     val props = readPropertiesFromFile("./humio.properties")
     val config = MessageHandlerConfig(
                                       maxByteSize = getProperty(props, "maxByteSize", "1048576").toInt,
-                                      maxWaitTimeSeconds = getProperty(props, "maxWaitTimeSeconds", "1").toInt,
-                                      queueSize = getProperty(props, "queueSize", "100000").toInt, 
-                                      workerThreads = getProperty(props, "workerThreads", "10").toInt
+                                      maxWaitTimeSeconds = getProperty(props, "maxWaitTimeSeconds", "1").toInt
     )
-    new MessageHandler(humioClient, config)
+    new MessageHandler(queues, humioClient, config)
   }
   
   def getProperty(properties: Properties, key: String, defaultValue: String) : String = {

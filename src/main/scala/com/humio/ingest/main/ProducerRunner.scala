@@ -2,7 +2,8 @@ package com.humio.ingest.main
 
 import java.time.format.DateTimeFormatter
 
-import com.humio.ingest.kafka.{KafkaClient, KafkaDataProducer}
+import com.humio.ingest.kafka.KafkaDataProducer
+import com.humio.ingest.producer.DataProducer
 import org.slf4j.LoggerFactory
 
 /**
@@ -21,16 +22,16 @@ object ProducerRunner extends App{
         var requests = 0
         var i = 0L
         var j = Long.MaxValue / 2
-        val (p1, p2) = createKafkaProducers()
+        val kafkaProducers = createKafkaProducers()
+        //val (p1, p2) = createKafkaProducers()
         while(true) {
           try{
-            val data1 = createData1(i)
-            p1.send(data1)
-            requests += 1
-
-            val data2 = createData2(j)
-            p2.send(data2)
-            requests += 1
+            
+            for(kp <- kafkaProducers; 
+                k <- 0 until 10) {
+             kp.send(DataProducer.createData(i))
+             requests += 1
+            }
             
             val time = System.currentTimeMillis()
             if ((time - lastMeasuredTime) > 1000) {
@@ -39,7 +40,7 @@ object ProducerRunner extends App{
               lastMeasuredTime = time
             }
             
-            //Thread.sleep(2)
+            Thread.sleep(10)
           } catch {
             case e: Throwable => {
               logger.error("error producing", e)
@@ -53,43 +54,15 @@ object ProducerRunner extends App{
     }.start()
   }
 
-
-  private val isoDateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
-  
-  def createData1(randomNumber: Long): String = {
-    val time = System.currentTimeMillis() / 1000D
-    s"""
-       |{
-       |  "pipeline": "us1",
-       |  "celery_identifier": "minimez",
-       |  "level": "INFO",
-       |  "ts": $time,
-       |  "host": "compute${randomNumber % 10000}-sjc1",
-       |  "msg": "this is my log message"
-       |}
-       |""".stripMargin
-  }
-
-  def createData2(randomNumber: Long): String = {
-    val time = System.currentTimeMillis() / 1000D
-    s"""
-       |{
-       |  "pipeline": "us1",
-       |  "celery_identifier": "minimez",
-       |  "level": "INFO",
-       |  "time": "2017-03-24T09:41:09Z",
-       |  "host": "compute${randomNumber % 10000}-sjc1",
-       |  "msg": "this is my log message"
-       |}
-       |""".stripMargin
-  }
-
   
   
-  def createKafkaProducers(): (KafkaDataProducer, KafkaDataProducer) = {
-    val kp1 = new KafkaDataProducer("localhost:9093", "test1")
-    val kp2 = new KafkaDataProducer("localhost:9093", "test2")
-    kp1 -> kp2
+  def createKafkaProducers(): Seq[KafkaDataProducer] = {
+    for(i <- 0 until 10) yield {
+      new KafkaDataProducer("localhost:9093", s"test${i}")
+    }
+    //val kp1 = new KafkaDataProducer("localhost:9093", "test1")
+    //val kp2 = new KafkaDataProducer("localhost:9093", "test2")
+    //Seq(kp1, kp2)
   }
 
 }

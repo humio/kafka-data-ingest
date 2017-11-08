@@ -10,6 +10,9 @@ import java.util.concurrent.{ArrayBlockingQueue, TimeUnit}
 import com.humio.ingest.client.{Event, HumioClient, TagsAndEvents}
 import org.slf4j.LoggerFactory
 
+import scala.annotation.tailrec
+import scala.collection.mutable.ArrayBuffer
+
 /**
   * Created by chr on 06/12/2016.
   */
@@ -17,61 +20,79 @@ object MessageHandler{
   
   val logger = LoggerFactory.getLogger(getClass)
   
-  case class Message(jsonString: String, topic: String)
-  case class MessageHandlerConfig(maxByteSize: Int, maxWaitTimeSeconds: Int, queueSize: Int, workerThreads: Int)
+  case class MessageHandlerConfig(maxByteSize: Int, maxWaitTimeSeconds: Int)
+
+  private val isoDateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
+
+  def transformJson(topic: String, messages: Seq[String]): TagsAndEvents = {
+    val events =
+      messages.flatMap {msg =>
+        try {
+          val json = msg.parseJson.asJsObject
+
+          val ts: Long =
+            json.getFields("ts", "time") match {
+              case Seq(JsNumber(time)) => (time.doubleValue() * 1000).toLong
+              case Seq(JsString(dateTimeStr)) => ZonedDateTime.parse(dateTimeStr, isoDateTimeFormatter).toInstant.toEpochMilli
+              case _ => {
+                logger.warn(s"Got event without recognized timestamp. event=${json}")
+                System.currentTimeMillis()
+              }
+            }
+
+          val event = Event(ts, JsObject(json.fields))
+          Some(event)
+        } catch {
+          case e: Throwable => {
+            logger.error(s"Could not handle event for topic=${topic} msg=${msg}", e)
+            None
+          }
+        }
+      }
+
+    TagsAndEvents(tags = Map("topic" -> topic), events = events)
+  }
 }
 
 import MessageHandler._
-class MessageHandler(humioClient: HumioClient, config: MessageHandlerConfig) {
+class MessageHandler(queues: Map[String, ArrayBlockingQueue[String]], humioClient: HumioClient, config: MessageHandlerConfig) {
   
-  val queue = new ArrayBlockingQueue[Message](config.queueSize)
   startWorkers()
   
-  
-  def newMessage(msg: Message): Unit = {
-    queue.put(msg)
-  }
-
   private def startWorkers(): Unit = {
-    for (_ <- 0 until config.workerThreads) {
+    for ((topic, queue) <- queues) {
+      val waitTime = config.maxWaitTimeSeconds * 1000
       val t = new Thread() {
         override def run(): Unit = {
-          var list = List[Message]()
-          var byteSize = 0
-          var time = System.currentTimeMillis()
-          while (true) {
-            try {
+          try {
+            val list = ArrayBuffer[String]()
+            var byteSize = 0
+            var firstEventTimestamp = -1L
+            while (true) {
               val msg = queue.poll(100, TimeUnit.MILLISECONDS)
-              val msgTime = System.currentTimeMillis()
-              val msgSize = 
-                if (msg != null) {
-                  msg.jsonString.getBytes(StandardCharsets.UTF_8).size
-                } else {
-                  0
-              }
-              val waitTime = msgTime - time 
-              if ((byteSize + msgSize) > config.maxByteSize ||
-                waitTime > config.maxWaitTimeSeconds * 1000) {
-                val sendTime = System.currentTimeMillis()
-                if (!list.isEmpty) {
-                  send(list)
-                  logger.info(s"send request with events=${list.size} bytes=$byteSize, waitTime=$waitTime, requesttime=${System.currentTimeMillis() - sendTime}")
-                }
-                list = List()
-                byteSize = 0
-              }
               if (msg != null) {
-                if (byteSize == 0) {
-                  //we are adding the first new message
-                  time = msgTime
-                }
-                list = msg :: list
+                val msgSize = msg.getBytes(StandardCharsets.UTF_8).size
+                list += msg
                 byteSize += msgSize
+                if (firstEventTimestamp <=0) {
+                  firstEventTimestamp = System.currentTimeMillis()
+                }
+                if (config.maxByteSize <= byteSize || firstEventTimestamp < (System.currentTimeMillis() - waitTime)) {
+                  //val t = System.currentTimeMillis()
+                  send(topic, list)
+                  //logger.info(s"sending data to humio. size=${byteSize} events=${list.size} time=${System.currentTimeMillis() - t}")
+
+                  list.clear()
+                  byteSize = 0
+                  firstEventTimestamp = -1
+                }
               }
-            } catch {
-              case e: Throwable => {
-                logger.error("error in worker", e)
-              }
+            }
+          } catch {
+            case e: Throwable => {
+              logger.error("error in worker", e)
+              Thread.sleep(5000)
+              run() : @tailrec
             }
           }
         }
@@ -80,42 +101,8 @@ class MessageHandler(humioClient: HumioClient, config: MessageHandlerConfig) {
     }
   }
   
-  private def send(messages: Seq[Message]): Unit = {
-    val tagsAndEvents = transformJson(messages)
+  private def send(topic: String, messages: Seq[String]): Unit = {
+    val tagsAndEvents = transformJson(topic, messages)
     humioClient.send(tagsAndEvents)
-  }
-
-  private val isoDateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
-  
-  private def transformJson(msgs: Seq[Message]): Seq[TagsAndEvents] = {
-    var res = Map[String, Seq[Event]]()
-    for(msg <- msgs) {
-      try {
-        val json = msg.jsonString.parseJson.asJsObject
-
-        val ts: Long =
-          json.getFields("ts", "time") match {
-            case Seq(JsNumber(time)) => (time.doubleValue() * 1000).toLong
-            case Seq(JsString(dateTimeStr)) => ZonedDateTime.parse(dateTimeStr, isoDateTimeFormatter).toInstant.toEpochMilli
-            case _ => {
-              logger.warn(s"Got event without recognized timestamp. event=${json}")
-              System.currentTimeMillis()
-            }
-          }
-
-        val event = Event(ts, JsObject(json.fields))
-
-        val seq = res.getOrElse(msg.topic, Seq())
-        res += msg.topic -> ( seq :+ event)
-      } catch {
-        case e: Throwable => {
-          logger.error(s"Could not handle event for topic=${msg.topic} msg=${msg}", e)
-        }
-      }
-    }
-    
-    res.foldLeft(Vector[TagsAndEvents]()) { case (acc, (k,v)) => 
-      acc :+ TagsAndEvents(tags = Map("topic" -> k), events = v)
-    }
   }
 }
