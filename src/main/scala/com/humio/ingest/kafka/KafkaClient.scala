@@ -20,6 +20,9 @@ object KafkaClient {
     type OffsetHandling = Value
     val continue, back, now = Value
   }
+  
+  case class ClusterAndTopic(zookeeperUrl: String, topic: String)
+  
 }
 
 import KafkaClient._
@@ -35,7 +38,7 @@ class KafkaClient(externalProperties: Properties, topics: Map[String, Seq[String
   private def setupConsumer(zookeeperConnectStr: String): ConsumerConnector = {
     val props = new Properties()
     props.put("group.id", groupID)
-    props.putAll(externalProperties)
+    props.putAll(externalProperties.asInstanceOf[util.Hashtable[_, _]])
     props.put("zookeeper.connect", zookeeperConnectStr)
 
     def deleteConsumerGroup(): Unit = {
@@ -64,8 +67,8 @@ class KafkaClient(externalProperties: Properties, topics: Map[String, Seq[String
     Consumer.createJavaConsumerConnector(config)
   }
 
-  def setupReadLoop(): Map[String, ArrayBlockingQueue[String]] = {
-    var queues = Map[String, ArrayBlockingQueue[String]]()
+  def setupReadLoop(): Map[ClusterAndTopic, ArrayBlockingQueue[String]] = {
+    var queues = Map[ClusterAndTopic, ArrayBlockingQueue[String]]()
     for((zookeeperConnectStr, topics) <- topics) {
       val consumer = setupConsumer(zookeeperConnectStr)
       
@@ -73,17 +76,18 @@ class KafkaClient(externalProperties: Properties, topics: Map[String, Seq[String
       for (topic <- topics) {
         topicStreamMap.put(topic, 1)
         logger.info(s"listening to topic: $zookeeperConnectStr -> $topic")
-        queues = queues + (topic -> new ArrayBlockingQueue[String](10))
+        queues += ClusterAndTopic(zookeeperUrl = zookeeperConnectStr, topic = topic) -> new ArrayBlockingQueue[String](10)
       }
       val res = consumer.createMessageStreams(topicStreamMap, new StringDecoder(), new StringDecoder())
 
       for ((topic, streams) <- res;
            stream <- streams) {
+        val clusterAndTopic = ClusterAndTopic(zookeeperConnectStr, topic)
         new Thread() {
           override def run(): Unit = {
             logger.info(s"starting thread for topic: $topic")
             try {
-              val queue = queues(topic)
+              val queue = queues(clusterAndTopic)
               val it = stream.iterator()
               while (it.hasNext()) {
                 val msg = it.next().message()

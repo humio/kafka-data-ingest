@@ -6,7 +6,7 @@ import java.util.concurrent.ArrayBlockingQueue
 
 import com.humio.ingest.client.HumioClient
 import com.humio.ingest.kafka.KafkaClient
-import com.humio.ingest.kafka.KafkaClient.OffsetHandling
+import com.humio.ingest.kafka.KafkaClient.{ClusterAndTopic, OffsetHandling}
 import com.humio.ingest.main.MessageHandler.MessageHandlerConfig
 
 /**
@@ -58,7 +58,7 @@ object Runner extends App {
     new HumioClient(props.getProperty("hostUrl"), props.getProperty("dataspace"), Option(props.getProperty("token")), httpThreads)
   }
   
-  def createMessageHandler(queues: Map[String, ArrayBlockingQueue[String]], humioClient: HumioClient): MessageHandler = {
+  def createMessageHandler(queues: Map[ClusterAndTopic, ArrayBlockingQueue[String]], humioClient: HumioClient): MessageHandler = {
     val props = readPropertiesFromFile("./humio.properties")
     val config = MessageHandlerConfig(
                                       maxByteSize = getProperty(props, "maxByteSize", "1048576").toInt,

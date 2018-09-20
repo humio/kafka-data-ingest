@@ -57,8 +57,8 @@ object ProducerRunner extends App{
   
   
   def createKafkaProducers(): Seq[KafkaDataProducer] = {
-    for(i <- 0 until 10) yield {
-      new KafkaDataProducer("localhost:9093", s"test${i}")
+    for(i <- 0 until 1) yield {
+      new KafkaDataProducer("localhost:8091", s"topic1")
     }
     //val kp1 = new KafkaDataProducer("localhost:9093", "test1")
     //val kp2 = new KafkaDataProducer("localhost:9093", "test2")
