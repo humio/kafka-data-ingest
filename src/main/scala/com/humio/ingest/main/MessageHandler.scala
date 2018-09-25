@@ -33,8 +33,8 @@ object MessageHandler{
 
           val ts: Long =
             json.getFields("ts", "time") match {
-              case Seq(JsNumber(time)) => (time.doubleValue() * 1000).toLong
-              case Seq(JsString(dateTimeStr)) => ZonedDateTime.parse(dateTimeStr, isoDateTimeFormatter).toInstant.toEpochMilli
+              case JsNumber(time) :: _ => (time.doubleValue() * 1000).toLong
+              case JsString(dateTimeStr) :: _ => ZonedDateTime.parse(dateTimeStr, isoDateTimeFormatter).toInstant.toEpochMilli
               case _ => {
                 logger.warn(s"Got event without recognized timestamp. event=${json}")
                 System.currentTimeMillis()
