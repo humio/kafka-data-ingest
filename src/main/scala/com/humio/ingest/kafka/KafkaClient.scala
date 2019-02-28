@@ -38,7 +38,9 @@ class KafkaClient(externalProperties: Properties, topics: Map[String, Seq[String
   private def setupConsumer(zookeeperConnectStr: String): ConsumerConnector = {
     val props = new Properties()
     props.put("group.id", groupID)
-    props.putAll(externalProperties.asInstanceOf[util.Hashtable[_, _]])
+    for((k,v) <- externalProperties) {
+      props.put(k, v)
+    }
     props.put("zookeeper.connect", zookeeperConnectStr)
 
     def deleteConsumerGroup(): Unit = {
