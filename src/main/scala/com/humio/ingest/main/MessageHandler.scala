@@ -32,7 +32,7 @@ object MessageHandler{
           val json = msg.parseJson.asJsObject
 
           val ts: Long =
-            json.getFields("ts", "time") match {
+            json.getFields("ts", "time", "@timestamp") match {
               case JsNumber(time) :: _ => (time.doubleValue() * 1000).toLong
               case JsString(dateTimeStr) :: _ => ZonedDateTime.parse(dateTimeStr, isoDateTimeFormatter).toInstant.toEpochMilli
               case _ => {
